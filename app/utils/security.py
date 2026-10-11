@@ -58,6 +58,16 @@ def extract_session_id(authorization: str) -> str:
         raise HTTPException(status_code=401, detail="Invalid token format")
     return token
 
+def delete_sessions_by_subject(subject: str, roles: tuple) -> int:
+    """Hapus semua session aktif milik 1 user (dipakai saat akun dinonaktifkan/dihapus/ganti password)."""
+    jumlah = 0
+    for key in redis_client.scan_iter(match="session:*", count=200):
+        sub, role = redis_client.hmget(key, "sub", "role")
+        if sub == subject and role in roles:
+            redis_client.delete(key)
+            jumlah += 1
+    return jumlah
+
 # ========== DEPENDENCY untuk verify session ==========
 def get_current_nasabah(authorization: str = None) -> str:
     """Extract NIK dari session yang aktif di Redis"""

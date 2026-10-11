@@ -67,6 +67,8 @@ class Admin(Base):
     no_hp = Column(String(15), nullable=True)
     role = Column(SQLEnum(RoleAdmin), nullable=False, default=RoleAdmin.admin)
     tanggal_dibuat = Column(DateTime, default=datetime.utcnow, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False,
+                   server_default=text("true"), comment="Akun admin aktif/nonaktif")
 
     # Relasi
     penarikan_diproses = relationship("PenarikanSaldo", back_populates="admin")

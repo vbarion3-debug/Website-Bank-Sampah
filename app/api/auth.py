@@ -127,6 +127,9 @@ def login_admin(data: AdminLogin, db: Session = Depends(get_db)):
     if not admin or not verify_password(data.password, admin.password):
         raise HTTPException(status_code=401, detail="Username atau password salah")
 
+    if not admin.is_active:
+        raise HTTPException(status_code=403, detail="Akun admin dinonaktifkan. Hubungi super admin.")
+
     if not admin.email:
         raise HTTPException(status_code=400, detail="Akun ini belum punya email terdaftar, hubungi super admin")
 
@@ -148,6 +151,9 @@ def verify_admin_otp(data: AdminVerifyOTP, db: Session = Depends(get_db)):
     admin = db.query(Admin).filter(Admin.username == data.username).first()
     if not admin:
         raise HTTPException(status_code=404, detail=" Admin tidak ditemukan")
+
+    if not admin.is_active:
+        raise HTTPException(status_code=403, detail="Akun admin dinonaktifkan. Hubungi super admin.")
 
     if not OTPService.verify_otp(db, admin.email, data.kode_otp):
         raise HTTPException(status_code=401, detail=" OTP salah atau sudah expired")
