@@ -19,6 +19,7 @@ class StatusPenarikan(str, enum.Enum):
     disetujui = "disetujui"
     ditolak = "ditolak"
     selesai = "selesai"
+    dibatalkan = "dibatalkan"
 
 class StatusPengumuman(str, enum.Enum):
     draft = "draft"
@@ -155,6 +156,20 @@ class PenarikanSaldo(Base):
     keterangan = Column(Text, nullable=True, comment="Catatan dari admin")
     tanggal_diproses = Column(DateTime, nullable=True)
     id_admin = Column(Integer, ForeignKey("admin.id_admin"), nullable=True)
+
+    nama_bank = Column(String(50), nullable=False)               # BARU (snapshot)
+    no_rekening = Column(String(30), nullable=False)             # BARU (snapshot)
+    nama_pemilik_rekening = Column(String(100), nullable=False)  # BARU (snapshot)
+    bukti_transfer = Column(String(255), nullable=True)          # BARU (nama file)
+
+    __table_args__ = (
+        Index("uq_penarikan_menunggu_nik", "nik", unique=True,
+              postgresql_where=text("status = 'menunggu'")),
+    )
+
+    @property
+    def ada_bukti(self) -> bool:
+        return self.bukti_transfer is not None
     
     # Relasi
     nasabah = relationship("Nasabah", back_populates="penarikan")
