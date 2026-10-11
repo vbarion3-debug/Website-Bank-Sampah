@@ -2,7 +2,8 @@ import enum
 from datetime import datetime
 from sqlalchemy import (
     Column, Integer, String, Text, Numeric, DateTime, 
-    ForeignKey, Enum as SQLEnum, CHAR, Boolean
+    ForeignKey, Enum as SQLEnum, CHAR, Boolean,
+    Index, text
 )
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -331,3 +332,29 @@ class ScanPending(Base):
     id_transaksi = Column(Integer, ForeignKey("transaksi.id_transaksi"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    sesi_id = Column(Integer, ForeignKey("sesi_setoran.id"), nullable=True, index=True)
+
+class StatusSesi(str, enum.Enum):
+    aktif = "aktif"
+    selesai = "selesai"   # ditutup nasabah -> item lengkap jadi Transaksi
+    batal = "batal"       # basi (tidak ada aktivitas) -> item lengkap jadi butuh_review
+ 
+ 
+class SesiSetoran(Base):
+    """Satu sesi = satu kali nasabah menyetor di satu mesin. Banyak item (ScanPending) -> satu Transaksi."""
+    __tablename__ = "sesi_setoran"
+ 
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    machine_id = Column(String(50), nullable=False, index=True)
+    nik = Column(CHAR(16), ForeignKey("nasabah.nik"), nullable=False, index=True)
+    status = Column(SQLEnum(StatusSesi), default=StatusSesi.aktif, nullable=False)
+    started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    terakhir_aktif = Column(DateTime, default=datetime.utcnow, nullable=False)
+    selesai_at = Column(DateTime, nullable=True)
+    id_transaksi = Column(Integer, ForeignKey("transaksi.id_transaksi"), nullable=True)
+ 
+    __table_args__ = (
+        # Pengaman di level DB: maksimal 1 sesi aktif per mesin & per nasabah
+        Index("uq_sesi_aktif_mesin", "machine_id", unique=True, postgresql_where=text("status = 'aktif'")),
+        Index("uq_sesi_aktif_nik", "nik", unique=True, postgresql_where=text("status = 'aktif'")),
+    )
