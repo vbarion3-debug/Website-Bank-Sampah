@@ -31,3 +31,13 @@ class JenisSampahResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class JenisSampahNasabahResponse(BaseModel):
+    """Versi publik untuk nasabah (tanpa kode_ml / data internal)"""
+    id_jenis: int
+    nama_jenis: str
+    kategori: Optional[str]
+    harga_per_kg: Decimal
+
+    class Config:
+        from_attributes = True

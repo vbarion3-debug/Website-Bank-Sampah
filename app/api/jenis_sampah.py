@@ -3,11 +3,23 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.models import JenisSampah, DetailTransaksi
-from app.schemas.jenis_sampah import JenisSampahCreate, JenisSampahUpdate, JenisSampahResponse
-from app.utils.security import get_current_admin
+from app.schemas.jenis_sampah import (
+    JenisSampahCreate, JenisSampahUpdate, JenisSampahResponse, JenisSampahNasabahResponse,
+)
+from app.utils.security import get_current_admin, get_current_session
 
 router = APIRouter(prefix="/jenis-sampah", tags=["Jenis Sampah"])
 
+# ========== NASABAH/ADMIN: LIST HARGA SAMPAH ==========
+# HARUS DI ATAS "GET /{id_jenis}" milik admin di bawah!
+@router.get("/nasabah/list", response_model=list[JenisSampahNasabahResponse])
+def list_jenis_sampah_nasabah(
+    authorization: str = Header(None),
+    db: Session = Depends(get_db)
+):
+    """Siapa pun yang sudah login (nasabah atau admin) bisa lihat daftar harga sampah"""
+    get_current_session(authorization)
+    return db.query(JenisSampah).order_by(JenisSampah.nama_jenis.asc()).all()
 
 # ========== TAMBAH JENIS SAMPAH BARU ==========
 @router.post("/create", response_model=JenisSampahResponse)
