@@ -202,6 +202,19 @@ def get_history_admin(
     transaksi_list = query.order_by(Transaksi.tanggal_transaksi.desc()).limit(limit).all()
     return [_to_history_response(t, db) for t in transaksi_list]
 
+# ========== NASABAH: LIHAT HISTORY TRANSAKSI SENDIRI ==========
+@router.get("/history", response_model=list[TransaksiHistoryResponse])
+def get_history(
+    authorization: str = Header(None),
+    db: Session = Depends(get_db)
+):
+    """Nasabah lihat riwayat transaksi sendiri (pakai token nasabah)"""
+    nik = get_current_nasabah(authorization)
+    transaksi_list = db.query(Transaksi)\
+        .filter(Transaksi.nik == nik)\
+        .order_by(Transaksi.tanggal_transaksi.desc())\
+        .all()
+    return [_to_history_response(t, db) for t in transaksi_list]
 
 # ========== ADMIN: DETAIL SATU TRANSAKSI (buat modal review) ==========
 @router.get("/{id_transaksi}", response_model=TransaksiHistoryResponse)
@@ -217,21 +230,6 @@ def get_transaksi_detail(
         raise HTTPException(status_code=404, detail="Transaksi tidak ditemukan")
 
     return _to_history_response(transaksi, db)
-
-
-# ========== NASABAH: LIHAT HISTORY TRANSAKSI SENDIRI ==========
-@router.get("/history", response_model=list[TransaksiHistoryResponse])
-def get_history(
-    authorization: str = Header(None),
-    db: Session = Depends(get_db)
-):
-    """Nasabah lihat riwayat transaksi sendiri (pakai token nasabah)"""
-    nik = get_current_nasabah(authorization)
-    transaksi_list = db.query(Transaksi)\
-        .filter(Transaksi.nik == nik)\
-        .order_by(Transaksi.tanggal_transaksi.desc())\
-        .all()
-    return [_to_history_response(t, db) for t in transaksi_list]
 
 
 # ========== IOT: BUAT TRANSAKSI OTOMATIS DARI DETEKSI ML ==========
