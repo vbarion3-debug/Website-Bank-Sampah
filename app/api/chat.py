@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Header, 
 from sqlalchemy.orm import Session
 from sqlalchemy import asc, desc
 from datetime import datetime
+from app.core.timezone import now_wib
 from app.core.database import get_db
 from app.models.models import PesanChat, ChatAssignment, Nasabah
 from app.schemas.chat import PesanChatResponse, ChatConversationResponse, ChatAssignmentResponse
@@ -171,7 +172,7 @@ def claim_chat(nik: str, authorization: str = Header(None), db: Session = Depend
     assignment = db.query(ChatAssignment).filter(ChatAssignment.nik_nasabah == nik).first()
     if assignment:
         assignment.admin_username = admin_username
-        assignment.claimed_at = datetime.utcnow()
+        assignment.claimed_at = now_wib()
     else:
         assignment = ChatAssignment(nik_nasabah=nik, admin_username=admin_username)
         db.add(assignment)

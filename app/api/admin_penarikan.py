@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.core.timezone import now_wib
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
@@ -145,7 +146,7 @@ def selesaikan_penarikan(
         penarikan.bukti_transfer = nama_file
         penarikan.keterangan = catatan
         penarikan.id_admin = admin.id_admin
-        penarikan.tanggal_diproses = datetime.utcnow()
+        penarikan.tanggal_diproses = now_wib()
         db.commit()
     except Exception:
         db.rollback()
@@ -173,7 +174,7 @@ def tolak_penarikan(
     penarikan.status = StatusPenarikan.ditolak
     penarikan.keterangan = data.alasan
     penarikan.id_admin = admin.id_admin
-    penarikan.tanggal_diproses = datetime.utcnow()
+    penarikan.tanggal_diproses = now_wib()
     db.commit()
     db.refresh(penarikan)
     return _to_admin_response(penarikan)

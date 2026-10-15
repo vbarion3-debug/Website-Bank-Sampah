@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from app.core.timezone import now_wib
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -164,7 +165,7 @@ def batalkan_penarikan(
     nasabah.saldo = nasabah.saldo + penarikan.jumlah
 
     penarikan.status = StatusPenarikan.dibatalkan
-    penarikan.tanggal_diproses = datetime.utcnow()
+    penarikan.tanggal_diproses = now_wib()
     db.commit()
     db.refresh(penarikan)
     return penarikan

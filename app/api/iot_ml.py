@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timedelta
+from app.core.timezone import now_wib
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -29,7 +30,7 @@ def _test_mode() -> bool:
 
 def _print_test(sumber: str, payload: dict):
     print(f"\n{'=' * 60}")
-    print(f"[TEST {sumber}] {datetime.now():%Y-%m-%d %H:%M:%S}")
+    print(f"[TEST {sumber}] {now_wib():%Y-%m-%d %H:%M:%S}")
     for k, v in payload.items():
         print(f"  {k}: {v}")
     print(f"{'=' * 60}\n", flush=True)
@@ -50,7 +51,7 @@ def _lengkap(item: ScanPending) -> bool:
 def _batalkan_sesi(db: Session, sesi: SesiSetoran):
     """Sesi basi: item lengkap -> butuh_review (admin bisa tindak lanjut), item setengah -> kadaluarsa."""
     sesi.status = StatusSesi.batal
-    sesi.selesai_at = datetime.utcnow()
+    sesi.selesai_at = now_wib()
     items = db.query(ScanPending).filter(
         ScanPending.sesi_id == sesi.id, ScanPending.status == StatusScan.menunggu
     ).all()
@@ -63,7 +64,7 @@ def _sesi_aktif(db: Session, machine_id: str) -> Optional[SesiSetoran]:
     sesi = db.query(SesiSetoran).filter(
         SesiSetoran.machine_id == machine_id, SesiSetoran.status == StatusSesi.aktif
     ).first()
-    if sesi and sesi.terakhir_aktif < datetime.utcnow() - timedelta(minutes=SESI_IDLE_MENIT):
+    if sesi and sesi.terakhir_aktif < now_wib() - timedelta(minutes=SESI_IDLE_MENIT):
         _batalkan_sesi(db, sesi)
         return None
     return sesi
@@ -71,7 +72,7 @@ def _sesi_aktif(db: Session, machine_id: str) -> Optional[SesiSetoran]:
 
 def _expire_setengah(db: Session, machine_id: str):
     """Item yang baru satu sisi dan lewat jendela waktu -> kadaluarsa. Item lengkap TIDAK ikut (menunggu sesi ditutup)."""
-    batas = datetime.utcnow() - timedelta(seconds=WINDOW_DETIK)
+    batas = now_wib() - timedelta(seconds=WINDOW_DETIK)
     db.query(ScanPending).filter(
         ScanPending.machine_id == machine_id,
         ScanPending.status == StatusScan.menunggu,
@@ -142,7 +143,7 @@ def mulai_sesi(
 
     if sesi:
         if sesi.nik == nik:  # idempotent: tekan "mulai" dua kali tidak membuat sesi baru
-            sesi.terakhir_aktif = datetime.utcnow()
+            sesi.terakhir_aktif = now_wib()
             db.commit()
             return SesiResponse(
                 id_sesi=sesi.id, machine_id=sesi.machine_id, nik=sesi.nik, status=sesi.status.value,
@@ -157,7 +158,7 @@ def mulai_sesi(
         SesiSetoran.nik == nik, SesiSetoran.status == StatusSesi.aktif
     ).first()
     if lain:
-        if lain.terakhir_aktif < datetime.utcnow() - timedelta(minutes=SESI_IDLE_MENIT):
+        if lain.terakhir_aktif < now_wib() - timedelta(minutes=SESI_IDLE_MENIT):
             _batalkan_sesi(db, lain)
             db.flush()
         else:
@@ -238,7 +239,7 @@ def selesai_sesi(
         sesi.id_transaksi = transaksi.id_transaksi
 
     sesi.status = StatusSesi.selesai
-    sesi.selesai_at = datetime.utcnow()
+    sesi.selesai_at = now_wib()
     db.commit()
 
     if transaksi:
@@ -274,7 +275,7 @@ def kirim_berat(
     # DEBUG: tampilkan data IoT yang masuk ke terminal backend (hanya di development)
     if os.getenv("ENVIRONMENT", "development") == "development":
         print(f"\n{'='*60}")
-        print(f"[IoT /berat] {datetime.now():%H:%M:%S} machine_id={data.machine_id} "
+        print(f"[IoT /berat] {now_wib():%H:%M:%S} machine_id={data.machine_id} "
               f"berat={data.berat} scan_id={data.scan_id}")
         print(f"{'='*60}\n", flush=True)
 
@@ -289,7 +290,7 @@ def kirim_berat(
         db.add(scan)
         db.flush()
 
-    sesi.terakhir_aktif = datetime.utcnow()
+    sesi.terakhir_aktif = now_wib()
     hasil = _respon_item(db, scan)
     db.commit()
     return hasil
@@ -332,7 +333,7 @@ def kirim_deteksi(
         db.add(scan)
         db.flush()
 
-    sesi.terakhir_aktif = datetime.utcnow()
+    sesi.terakhir_aktif = now_wib()
     hasil = _respon_item(db, scan)
     db.commit()
     return hasil

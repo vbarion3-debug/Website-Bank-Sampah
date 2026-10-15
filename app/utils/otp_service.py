@@ -1,6 +1,7 @@
 import secrets
 import string
 from datetime import datetime, timedelta, timezone
+from app.core.timezone import now_wib
 from sqlalchemy.orm import Session
 from app.models.models import OTP
 
@@ -16,7 +17,7 @@ class OTPService:
         db.commit()
 
         kode_otp = OTPService.generate_otp()
-        expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=5)
+        expires_at = now_wib() + timedelta(minutes=5)
 
         otp_record = OTP(identifier=identifier, kode_otp=kode_otp, expires_at=expires_at)
         db.add(otp_record)
@@ -33,7 +34,7 @@ class OTPService:
 
         if not otp_record:
             return False
-        if datetime.now(timezone.utc).replace(tzinfo=None) > otp_record.expires_at:
+        if now_wib() > otp_record.expires_at:
             return False
 
         otp_record.is_used = True

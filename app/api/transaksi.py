@@ -2,6 +2,7 @@ import base64
 import os
 import uuid
 from datetime import date, datetime
+from app.core.timezone import now_wib
 
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
@@ -378,7 +379,7 @@ def update_detail_transaksi(
 
     detail.subtotal = detail.berat * detail.harga_per_kg
     detail.dikoreksi_oleh = admin_username
-    detail.dikoreksi_at = datetime.utcnow()
+    detail.dikoreksi_at = now_wib()
 
     # Selisih nilai disesuaikan ke saldo nasabah supaya tetap akurat
     selisih = detail.subtotal - subtotal_lama
@@ -465,7 +466,7 @@ def add_detail_transaksi(
         subtotal=subtotal,
         ditambahkan_manual=True,
         dikoreksi_oleh=admin_username,
-        dikoreksi_at=datetime.utcnow(),
+        dikoreksi_at=now_wib(),
     )
     db.add(detail)
 
