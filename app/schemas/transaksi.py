@@ -56,6 +56,8 @@ class TransaksiResponse(BaseModel):
     keterangan: Optional[str]
     saldo_nasabah_sekarang: Decimal
     details: List[DetailTransaksiResponse]
+    dibuat_manual: bool = False
+    dibuat_oleh: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -72,6 +74,8 @@ class TransaksiHistoryResponse(BaseModel):
     keterangan: Optional[str]
     ada_flag: bool = False
     details: List[DetailTransaksiResponse]
+    dibuat_manual: bool = False
+    dibuat_oleh: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -116,6 +116,8 @@ class Transaksi(Base):
     total_berat = Column(Numeric(10, 2), nullable=False)
     total_nilai = Column(Numeric(15, 2), nullable=False, comment="Saldo yang didapat")
     keterangan = Column(Text, nullable=True)
+    dibuat_manual = Column(Boolean, default=False, nullable=False)
+    dibuat_oleh = Column(String(50), nullable=True, comment="Username admin yang mencatat (kalau manual)")
     
     # Relasi
     nasabah = relationship("Nasabah", back_populates="transaksi")
@@ -135,6 +137,7 @@ class DetailTransaksi(Base):
     subtotal = Column(Numeric(15, 2), nullable=False, comment="Berat × harga_per_kg")
 
     ditambahkan_manual = Column(Boolean, default=False, nullable=False)
+    foto_url = Column(String(255), nullable=True, comment="Foto item untuk transaksi manual")
     dikoreksi_oleh = Column(String(50), nullable=True)
     dikoreksi_at = Column(DateTime, nullable=True)
     

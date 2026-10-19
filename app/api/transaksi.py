@@ -4,10 +4,12 @@ import uuid
 from datetime import date, datetime
 from app.core.timezone import now_wib
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+import json
+from typing import List, Optional
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Header, UploadFile
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from decimal import Decimal
-from typing import Optional
 
 from app.core.database import get_db
 from app.models.models import (Transaksi, DetailTransaksi,
@@ -66,7 +68,7 @@ def _serialize_detail(detail: DetailTransaksi, db: Session) -> DetailTransaksiRe
         subtotal=detail.subtotal,
         jenis_terdeteksi=data_iot.jenis_terdeteksi if data_iot else None,
         confidence=confidence,
-        foto_url=data_iot.foto_url if data_iot else None,
+        foto_url=(data_iot.foto_url if data_iot and data_iot.foto_url else detail.foto_url),
         is_flagged=is_flagged,
         ditambahkan_manual=detail.ditambahkan_manual,
         dikoreksi_oleh=detail.dikoreksi_oleh,
@@ -94,6 +96,8 @@ def _to_history_response(transaksi: Transaksi, db: Session) -> TransaksiHistoryR
         keterangan=transaksi.keterangan,
         ada_flag=any(d.is_flagged for d in details),
         details=details,
+        dibuat_manual=transaksi.dibuat_manual,
+        dibuat_oleh=transaksi.dibuat_oleh,
     )
 
 
@@ -177,6 +181,164 @@ def create_transaksi(
         details=detail_responses
     )
 
+
+MAX_FOTO_BYTES = 5 * 1024 * 1024  # 5 MB per foto
+MAX_ITEM_MANUAL = 20
+
+
+def _deteksi_ekstensi_foto(head: bytes) -> Optional[str]:
+    """Tentukan tipe dari ISI file (magic bytes), bukan dari nama/content-type kiriman client."""
+    if head.startswith(b"\xff\xd8\xff"):
+        return ".jpg"
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return ".webp"
+    return None
+
+
+def _simpan_foto_sampah(upload: UploadFile) -> str:
+    """Validasi lalu simpan foto. Return URL relatif (/static/uploads/sampah/xxx.jpg)."""
+    data = upload.file.read(MAX_FOTO_BYTES + 1)
+    if not data:
+        raise HTTPException(status_code=400, detail="Ada file foto yang kosong")
+    if len(data) > MAX_FOTO_BYTES:
+        raise HTTPException(status_code=413, detail="Ukuran tiap foto maksimal 5 MB")
+    ekstensi = _deteksi_ekstensi_foto(data[:12])
+    if ekstensi is None:
+        raise HTTPException(status_code=415, detail="Format foto harus JPG, PNG, atau WEBP")
+    nama_file = f"{uuid.uuid4().hex}{ekstensi}"
+    with open(os.path.join(UPLOAD_DIR, nama_file), "wb") as f:
+        f.write(data)
+    return f"/static/uploads/sampah/{nama_file}"
+
+
+def _hapus_foto_sampah(url: Optional[str]) -> None:
+    """Bersih-bersih kalau commit DB gagal setelah foto terlanjur tersimpan."""
+    if not url:
+        return
+    try:
+        os.remove(os.path.join(UPLOAD_DIR, os.path.basename(url)))
+    except OSError:
+        pass
+
+
+def _parse_items_manual(items_json: str) -> list:
+    try:
+        raw = json.loads(items_json)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Format 'items' bukan JSON yang valid")
+    if not isinstance(raw, list) or not raw:
+        raise HTTPException(status_code=400, detail="Minimal harus ada 1 item sampah")
+    if len(raw) > MAX_ITEM_MANUAL:
+        raise HTTPException(status_code=400, detail=f"Maksimal {MAX_ITEM_MANUAL} item per transaksi")
+    try:
+        return [DetailTransaksiCreate(**r) for r in raw]
+    except (ValidationError, TypeError):
+        raise HTTPException(
+            status_code=422,
+            detail="Item tidak valid: tiap item butuh id_jenis dan berat (> 0)",
+        )
+
+
+# ========== ADMIN: BUAT TRANSAKSI MANUAL (WAJIB FOTO TIAP ITEM) ==========
+@router.post("/create-manual", response_model=TransaksiResponse)
+def create_transaksi_manual(
+    nik: str = Form(..., min_length=16, max_length=16),
+    items: str = Form(..., description='JSON: [{"id_jenis": 1, "berat": 2.5}, ...]'),
+    foto: List[UploadFile] = File(..., description="Satu foto per item, urutan SAMA dengan 'items'"),
+    keterangan: Optional[str] = Form(None, max_length=500),
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Admin mencatat setoran secara manual (tanpa IoT). Tiap item WAJIB punya foto.
+    Transaksi ditandai dibuat_manual=True + dibuat_oleh=<username admin>.
+    Request ini multipart/form-data. Harga tetap diambil dari tabel jenis_sampah.
+    """
+    admin_session = get_current_admin(authorization)
+    daftar = _parse_items_manual(items)
+
+    if len(foto) != len(daftar):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Jumlah foto ({len(foto)}) harus sama dengan jumlah item ({len(daftar)})",
+        )
+
+    # Kunci baris nasabah supaya dua setoran barengan tidak saling menimpa saldo
+    nasabah = db.query(Nasabah).filter(Nasabah.nik == nik).with_for_update().first()
+    if not nasabah:
+        raise HTTPException(status_code=404, detail="Nasabah dengan NIK tersebut tidak ditemukan")
+    if not nasabah.is_active:
+        raise HTTPException(status_code=403, detail="Akun nasabah ini sedang dinonaktifkan")
+
+    # Cek semua jenis sampah SEBELUM menyimpan foto apa pun
+    jenis_list = []
+    for item in daftar:
+        jenis = db.query(JenisSampah).filter(JenisSampah.id_jenis == item.id_jenis).first()
+        if not jenis:
+            raise HTTPException(status_code=404, detail=f"Jenis sampah id {item.id_jenis} tidak ditemukan")
+        jenis_list.append(jenis)
+
+    foto_tersimpan: list = []
+    try:
+        for upload in foto:
+            foto_tersimpan.append(_simpan_foto_sampah(upload))
+
+        total_berat = Decimal(0)
+        total_nilai = Decimal(0)
+        transaksi = Transaksi(
+            nik=nik,
+            total_berat=0,
+            total_nilai=0,
+            keterangan=keterangan,
+            dibuat_manual=True,
+            dibuat_oleh=admin_session["sub"],
+        )
+        db.add(transaksi)
+        db.flush()
+
+        detail_responses = []
+        for item, jenis, url_foto in zip(daftar, jenis_list, foto_tersimpan):
+            subtotal = item.berat * jenis.harga_per_kg
+            total_berat += item.berat
+            total_nilai += subtotal
+            detail = DetailTransaksi(
+                id_transaksi=transaksi.id_transaksi,
+                id_jenis=item.id_jenis,
+                berat=item.berat,
+                harga_per_kg=jenis.harga_per_kg,
+                subtotal=subtotal,
+                foto_url=url_foto,
+            )
+            db.add(detail)
+            db.flush()
+            detail_responses.append(_serialize_detail(detail, db))
+
+        transaksi.total_berat = total_berat
+        transaksi.total_nilai = total_nilai
+        nasabah.saldo = nasabah.saldo + total_nilai
+        db.commit()
+    except Exception:
+        db.rollback()
+        for url_foto in foto_tersimpan:
+            _hapus_foto_sampah(url_foto)  # jangan tinggalkan foto yatim
+        raise
+
+    db.refresh(transaksi)
+    db.refresh(nasabah)
+    return TransaksiResponse(
+        id_transaksi=transaksi.id_transaksi,
+        nik=transaksi.nik,
+        tanggal_transaksi=transaksi.tanggal_transaksi,
+        total_berat=transaksi.total_berat,
+        total_nilai=transaksi.total_nilai,
+        keterangan=transaksi.keterangan,
+        dibuat_manual=True,
+        dibuat_oleh=transaksi.dibuat_oleh,
+        saldo_nasabah_sekarang=nasabah.saldo,
+        details=detail_responses,
+    )
 
 # ========== ADMIN: LIHAT SEMUA RIWAYAT TRANSAKSI ==========
 @router.get("/history-admin", response_model=list[TransaksiHistoryResponse])
