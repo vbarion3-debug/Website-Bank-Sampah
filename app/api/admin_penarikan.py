@@ -15,6 +15,7 @@ from app.schemas.penarikan import (
 )
 from app.utils.bukti_transfer import hapus_bukti_transfer, simpan_bukti_transfer
 from app.utils.security import get_current_admin
+from app.utils.notifikasi import notif_penarikan_selesai, notif_penarikan_ditolak
 
 router = APIRouter(prefix="/admin/penarikan", tags=["Admin - Penarikan Saldo"])
 
@@ -147,6 +148,7 @@ def selesaikan_penarikan(
         penarikan.keterangan = catatan
         penarikan.id_admin = admin.id_admin
         penarikan.tanggal_diproses = now_wib()
+        notif_penarikan_selesai(db, penarikan)
         db.commit()
     except Exception:
         db.rollback()
@@ -175,6 +177,7 @@ def tolak_penarikan(
     penarikan.keterangan = data.alasan
     penarikan.id_admin = admin.id_admin
     penarikan.tanggal_diproses = now_wib()
+    notif_penarikan_ditolak(db, penarikan)
     db.commit()
     db.refresh(penarikan)
     return _to_admin_response(penarikan)

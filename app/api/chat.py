@@ -37,6 +37,20 @@ async def ws_chat_nasabah(websocket: WebSocket, token: str = Query(...), db: Ses
     except WebSocketDisconnect:
         manager.disconnect_nasabah(nik)
 
+@router.post("/baca-nasabah")
+def tandai_chat_dibaca_nasabah(
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    nik = get_current_nasabah(authorization)
+    jumlah = db.query(PesanChat).filter(
+        PesanChat.nik_nasabah == nik,
+        PesanChat.sender_type == "admin",
+        PesanChat.is_read == False,
+    ).update({"is_read": True}, synchronize_session=False)
+    db.commit()
+    return {"diperbarui": jumlah}
+
 
 # ========== WEBSOCKET: ADMIN (buka chat nasabah tertentu) ==========
 @router.websocket("/ws/admin/{nik}")
@@ -106,13 +120,20 @@ def get_chat_history_nasabah(
 ):
     """Nasabah lihat riwayat chat-nya sendiri."""
     nik = get_current_nasabah(authorization)
-    return (
+    history = (
         db.query(PesanChat)
         .filter(PesanChat.nik_nasabah == nik)
         .order_by(asc(PesanChat.created_at))
         .limit(limit)
         .all()
     )
+    db.query(PesanChat).filter(
+        PesanChat.nik_nasabah == nik,
+        PesanChat.sender_type == "admin",
+        PesanChat.is_read == False,
+    ).update({"is_read": True})
+    db.commit()
+    return history
 
 # ========== REST: daftar percakapan (nasabah yang sudah chat) ==========
 @router.get("/conversations", response_model=list[ChatConversationResponse])

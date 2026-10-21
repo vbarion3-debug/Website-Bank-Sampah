@@ -12,6 +12,7 @@ from app.schemas.admin_nasabah import (
     RiwayatSaldoAdjustmentResponse
 )
 from app.utils.security import get_current_admin
+from app.utils.notifikasi import notif_saldo_manual
 
 router = APIRouter(prefix="/admin/nasabah", tags=["Admin - Kelola Nasabah"])
 
@@ -160,6 +161,7 @@ def adjust_saldo_nasabah(
     db.add(log_adjustment)
 
     nasabah.saldo = saldo_sesudah
+    notif_saldo_manual(db, nik, data.jumlah, saldo_sesudah, data.keterangan)
     db.commit()
     db.refresh(nasabah)
     return nasabah

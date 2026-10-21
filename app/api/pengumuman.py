@@ -4,6 +4,7 @@ from app.core.database import get_db
 from app.models.models import Pengumuman, Admin, StatusPengumuman
 from app.schemas.pengumuman import PengumumanCreate, PengumumanUpdate, PengumumanResponse
 from app.utils.security import get_current_admin, get_current_session
+from app.utils.notifikasi import notif_pengumuman_terbit, adalah_terbit
 
 router = APIRouter(prefix="/pengumuman", tags=["Pengumuman"])
 
@@ -33,6 +34,9 @@ def create_pengumuman(
         status=data.status
     )
     db.add(new_pengumuman)
+    db.flush()
+    if adalah_terbit(new_pengumuman.status):
+        notif_pengumuman_terbit(db, new_pengumuman)
     db.commit()
     db.refresh(new_pengumuman)
     return new_pengumuman
@@ -110,9 +114,13 @@ def update_pengumuman(
     pengumuman = db.query(Pengumuman).filter(Pengumuman.id_pengumuman == id_pengumuman).first()
     if not pengumuman:
         raise HTTPException(status_code=404, detail="Pengumuman tidak ditemukan")
+    status_lama = pengumuman.status
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(pengumuman, field, value)
+    db.flush()
+    if adalah_terbit(pengumuman.status) and not adalah_terbit(status_lama):
+        notif_pengumuman_terbit(db, pengumuman)
     db.commit()
     db.refresh(pengumuman)
     return pengumuman

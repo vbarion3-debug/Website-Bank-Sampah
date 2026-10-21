@@ -384,3 +384,23 @@ class SesiSetoran(Base):
         Index("uq_sesi_aktif_mesin", "machine_id", unique=True, postgresql_where=text("status = 'aktif'")),
         Index("uq_sesi_aktif_nik", "nik", unique=True, postgresql_where=text("status = 'aktif'")),
     )
+
+class Notifikasi(Base):
+    """Notifikasi untuk nasabah. Satu baris = satu notifikasi untuk satu nasabah."""
+    __tablename__ = "notifikasi"
+
+    id_notifikasi = Column(Integer, primary_key=True, autoincrement=True)
+    # Sengaja TANPA relationship(): cukup FK + ondelete CASCADE, supaya menghapus nasabah
+    # tidak bentrok dengan ORM dan notifikasinya ikut terhapus oleh database.
+    nik = Column(CHAR(16), ForeignKey("nasabah.nik", ondelete="CASCADE"), nullable=False)
+    tipe = Column(String(30), nullable=False,
+                  comment="setoran | penarikan_selesai | penarikan_ditolak | saldo | pengumuman | keamanan")
+    judul = Column(String(150), nullable=False)
+    isi = Column(Text, nullable=False)
+    id_referensi = Column(Integer, nullable=True, comment="id transaksi / penarikan / pengumuman terkait")
+    is_read = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    tanggal = Column(DateTime, nullable=False, default=now_wib)
+
+    __table_args__ = (
+        Index("ix_notifikasi_nik_read_tanggal", "nik", "is_read", "tanggal"),
+    )

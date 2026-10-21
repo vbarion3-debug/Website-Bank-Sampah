@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
 from typing import Optional
 from decimal import Decimal
@@ -70,3 +70,18 @@ class RegistrationSuccess(BaseModel):
     nama_nasabah: str
     no_hp: str
     next_step: str = "Silakan login menggunakan nomor HP"
+
+class NasabahProfileUpdate(BaseModel):
+    """
+    Edit profil oleh nasabah sendiri. Semua field opsional: hanya yang dikirim yang diubah.
+    NIK, saldo, dan status akun TIDAK bisa diubah lewat sini (extra='forbid' -> 422,
+    bukan diabaikan diam-diam).
+    """
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    nama_nasabah: Optional[str] = Field(None, min_length=3, max_length=100)
+    no_hp: Optional[str] = Field(None, pattern=r"^(\+62|0)[0-9]{9,12}$")
+    no_rekening: Optional[str] = Field(None, min_length=10, max_length=30)
+    nama_bank: Optional[str] = Field(None, min_length=3, max_length=50)
+    nama_pemilik_rekening: Optional[str] = Field(None, min_length=3, max_length=100)
+    alamat: Optional[str] = Field(None, max_length=500)

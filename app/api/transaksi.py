@@ -18,6 +18,7 @@ from app.schemas.transaksi import (TransaksiCreate, TransaksiResponse, DetailTra
                                    TransaksiIoTCreate, TransaksiHistoryResponse,
                                    DetailTransaksiCreate, DetailTransaksiUpdate)
 from app.utils.security import get_current_admin, get_current_nasabah, verify_iot_api_key
+from app.utils.notifikasi import notif_setoran
 
 router = APIRouter(prefix="/transaksi", tags=["Transaksi"])
 
@@ -166,6 +167,7 @@ def create_transaksi(
         detail_responses.append(_serialize_detail(detail_transaksi, db))
 
     nasabah.saldo = nasabah.saldo + total_nilai
+    notif_setoran(db, nasabah.nik, transaksi.id_transaksi, total_berat, total_nilai)
     db.commit()
     db.refresh(transaksi)
     db.refresh(nasabah)
@@ -318,6 +320,7 @@ def create_transaksi_manual(
         transaksi.total_berat = total_berat
         transaksi.total_nilai = total_nilai
         nasabah.saldo = nasabah.saldo + total_nilai
+        notif_setoran(db, nasabah.nik, transaksi.id_transaksi, total_berat, total_nilai)
         db.commit()
     except Exception:
         db.rollback()
@@ -464,6 +467,7 @@ def buat_transaksi_iot(
         detail_responses.append(_serialize_detail(detail_transaksi, db))
  
     nasabah.saldo = nasabah.saldo + total_nilai
+    notif_setoran(db, nik, transaksi.id_transaksi, total_berat, total_nilai)
     db.flush()
  
     return TransaksiResponse(
