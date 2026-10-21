@@ -8,3 +8,5 @@ private_uploads/
 # Python Cache
 __pycache__/
 *.pyc
+
+.vscode/

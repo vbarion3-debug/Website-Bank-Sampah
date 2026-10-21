@@ -235,6 +235,11 @@ class HargaMitraPengepul(Base):
     mitra = relationship("MitraPengepul", back_populates="harga_jenis_sampah")
     jenis_sampah = relationship("JenisSampah")
 
+    @property
+    def nama_jenis(self):
+        """Dibaca schema HargaMitraResponse (from_attributes) supaya nama_jenis tidak null."""
+        return self.jenis_sampah.nama_jenis if self.jenis_sampah else None
+
 
 class DataIoT(Base):
     """Tabel Data IoT - Integrasi sensor ESP32"""

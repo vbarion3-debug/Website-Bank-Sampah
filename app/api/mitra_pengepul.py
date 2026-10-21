@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
 from typing import Optional
 
@@ -13,6 +13,7 @@ from app.schemas.mitra_pengepul import (
 from app.utils.security import get_current_admin
 
 router = APIRouter(prefix="/mitra-pengepul", tags=["Mitra Pengepul"])
+
 
 
 # ========== TAMBAH MITRA BARU ==========
@@ -68,7 +69,16 @@ def get_mitra_detail(
 ):
     get_current_admin(authorization)
 
-    mitra = db.query(MitraPengepul).filter(MitraPengepul.id_mitra == id_mitra).first()
+    mitra = (
+    db.query(MitraPengepul)
+    .options(
+        joinedload(MitraPengepul.harga_jenis_sampah)
+        .joinedload(HargaMitraPengepul.jenis_sampah)
+    )
+    .filter(MitraPengepul.id_mitra == id_mitra)
+    .first()
+    )
+    
     if not mitra:
         raise HTTPException(status_code=404, detail="Mitra pengepul tidak ditemukan")
     return mitra
@@ -132,7 +142,7 @@ def delete_mitra(
 
     db.delete(mitra)  # cascade akan otomatis hapus harga_jenis_sampah terkait
     db.commit()
-    return {"message": f"✅ Mitra pengepul '{mitra.nama_mitra}' berhasil dihapus"}
+    return {"message": f"Mitra pengepul '{mitra.nama_mitra}' berhasil dihapus"}
 
 
 # ========== TAMBAH/UPDATE HARGA JENIS SAMPAH UNTUK MITRA INI ==========
@@ -230,4 +240,4 @@ def delete_harga_mitra(
 
     db.delete(harga)
     db.commit()
-    return {"message": "✅ Harga jenis sampah untuk mitra ini berhasil dihapus"}
+    return {"message": "Harga jenis sampah untuk mitra ini berhasil dihapus"}
