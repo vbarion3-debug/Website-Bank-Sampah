@@ -359,6 +359,7 @@ class ScanPending(Base):
     created_at = Column(DateTime, default=now_wib, nullable=False)
     updated_at = Column(DateTime, default=now_wib, onupdate=now_wib, nullable=False)
     sesi_id = Column(Integer, ForeignKey("sesi_setoran.id"), nullable=True, index=True)
+    id_jenis_override = Column(Integer, ForeignKey("jenis_sampah.id_jenis"), nullable=True)
 
 class StatusSesi(str, enum.Enum):
     aktif = "aktif"
@@ -378,6 +379,7 @@ class SesiSetoran(Base):
     terakhir_aktif = Column(DateTime, default=now_wib, nullable=False)
     selesai_at = Column(DateTime, nullable=True)
     id_transaksi = Column(Integer, ForeignKey("transaksi.id_transaksi"), nullable=True)
+    id_admin = Column(Integer, ForeignKey("admin.id_admin"), nullable=True)
  
     __table_args__ = (
         # Pengaman di level DB: maksimal 1 sesi aktif per mesin & per nasabah
@@ -403,4 +405,31 @@ class Notifikasi(Base):
 
     __table_args__ = (
         Index("ix_notifikasi_nik_read_tanggal", "nik", "is_read", "tanggal"),
+    )
+
+class PerangkatIoT(Base):
+    """Database alat IoT (timbangan + kamera). last_seen diisi heartbeat dari alat."""
+    __tablename__ = "perangkat_iot"
+ 
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    machine_id = Column(String(50), unique=True, nullable=False, index=True,
+                        comment="Sama persis dengan machine_id yang dikirim tim IoT & ML")
+    nama = Column(String(100), nullable=False)
+    lokasi = Column(String(150), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    last_seen = Column(DateTime, nullable=True, comment="Heartbeat terakhir dari alat")
+    created_at = Column(DateTime, default=now_wib, nullable=False)
+ 
+ 
+# 2) TAMBAH 1 KOLOM di class ScanPending (di bawah kolom sesi_id):
+    id_jenis_override = Column(
+        Integer, ForeignKey("jenis_sampah.id_jenis"), nullable=True,
+        comment="Jenis sampah yang dipilih admin manual (menimpa label ML)",
+    )
+ 
+ 
+# 3) TAMBAH 1 KOLOM di class SesiSetoran (di bawah kolom id_transaksi):
+    id_admin = Column(
+        Integer, ForeignKey("admin.id_admin"), nullable=True,
+        comment="Admin yang memulai sesi (audit)",
     )

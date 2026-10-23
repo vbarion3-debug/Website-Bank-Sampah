@@ -13,8 +13,8 @@ from app.models import models
 # Import routers
 from app.api import (admin, nasabah, auth, transaksi, pengumuman, 
                      jenis_sampah, admin_nasabah, mitra_pengepul, transaksi_jual_mitra, 
-                     admin_faq, nasabah_faq, chat, iot_ml, penarikan, admin_penarikan,
-                     notifikasi)
+                     admin_faq, nasabah_faq, chat, iot_ml, admin_iot, penarikan, 
+                     admin_penarikan, notifikasi)
 
 # Load .env
 load_dotenv()
@@ -71,6 +71,7 @@ app.include_router(admin_faq.router)                # /admin/faq
 app.include_router(nasabah_faq.router)              # /faq
 app.include_router(chat.router)                     # /livechat
 app.include_router(iot_ml.router)                   # /iot-ml
+app.include_router(admin_iot.router)                # /admin/iot
 app.include_router(penarikan.router)                # /penarikan
 app.include_router(admin_penarikan.router)          # /admin/penarikan
 app.include_router(notifikasi.router)               # /notifikasi

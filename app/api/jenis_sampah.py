@@ -37,7 +37,8 @@ def create_jenis_sampah(
     new_jenis = JenisSampah(
         nama_jenis=data.nama_jenis,
         kategori=data.kategori,
-        harga_per_kg=data.harga_per_kg
+        harga_per_kg=data.harga_per_kg,
+        kode_ml=data.kode_ml
     )
     db.add(new_jenis)
     db.commit()
