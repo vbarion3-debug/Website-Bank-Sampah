@@ -2,10 +2,12 @@
 Admin — kelola alat IoT & sesi setoran IoT+ML.
 
 Alur: admin pilih alat yang "Tersambung" + NIK nasabah -> POST /admin/iot/sesi/mulai
-      -> alat & kamera mengirim data ke /iot-ml/berat & /iot-ml/deteksi (tim IoT/ML, tidak berubah)
+      -> timbangan mengirim berat ke /iot-ml/berat; admin menekan SCAN di browser -> POST /admin/iot/sesi/{id}/scan
+         (foto dikirim, YOLO jalan di backend, label + confidence masuk ke item sesi)
       -> admin memantau lewat GET /admin/iot/sesi/{id} (polling), boleh koreksi jenis tiap item
       -> POST /admin/iot/sesi/{id}/selesai  => Transaksi dibuat (algoritma sama seperti transaksi biasa).
 """
+import base64
 from datetime import timedelta
 from decimal import Decimal
 from typing import List
@@ -18,16 +20,19 @@ from app.api.iot_ml import (
     CONFIDENCE_RENDAH, SESI_IDLE_MENIT, batalkan_sesi, is_online, kunci_mesin,
     lengkap, peta_jenis_item, sesi_aktif, tutup_sesi,
 )
+from app.api.transaksi import _save_base64_image
 from app.core.database import get_db
 from app.core.timezone import now_wib
 from app.models.models import (
     Admin, JenisSampah, Nasabah, PerangkatIoT, ScanPending, SesiSetoran, StatusScan, StatusSesi,
 )
 from app.schemas.admin_iot import (
-    ItemJenisUpdate, ItemSesiResponse, PerangkatCreate, PerangkatResponse, PerangkatUpdate,
+    DeteksiItem, ItemJenisUpdate, ItemSesiResponse, KelasModel, ModelInfoResponse,
+    PerangkatCreate, PerangkatResponse, PerangkatUpdate, ScanHasilResponse, ScanRequest,
     SesiDetailResponse, SesiMulaiAdminRequest,
 )
 from app.schemas.iot_ml import SesiResponse
+from app.utils.detector import MODEL_PATH, DetektorError, deteksi_gambar, nama_kelas
 from app.utils.security import get_current_admin
 
 router = APIRouter(prefix="/admin/iot", tags=["Admin - IoT & Sesi Setoran"])
@@ -313,6 +318,118 @@ def hapus_item(
     sesi.terakhir_aktif = now_wib()
     db.commit()
     return _detail_sesi(db, sesi)
+
+
+# ========== SCAN KAMERA (YOLO di backend) ==========
+def _target_scan(db: Session, sesi: SesiSetoran):
+    """
+    Item mana yang menerima label dari scan ini:
+      (a) item yang sudah ditimbang tapi belum punya label  -> diisi (yang paling lama dulu)
+      (b) item yang baru punya label & menunggu timbangan    -> label ditimpa (scan ulang)
+      (c) tidak ada keduanya                                 -> None, caller membuat item baru (menunggu timbangan)
+    Item yang jenisnya sudah dipilih manual oleh admin tidak disentuh.
+    """
+    dasar = db.query(ScanPending).filter(
+        ScanPending.sesi_id == sesi.id,
+        ScanPending.status == StatusScan.menunggu,
+        ScanPending.id_jenis_override.is_(None),
+    )
+    item = dasar.filter(
+        ScanPending.berat.isnot(None), ScanPending.jenis_terdeteksi.is_(None)
+    ).order_by(ScanPending.created_at.asc()).first()
+    if item:
+        return item
+    return dasar.filter(
+        ScanPending.berat.is_(None), ScanPending.jenis_terdeteksi.isnot(None)
+    ).order_by(ScanPending.created_at.desc()).first()
+
+
+@router.post("/sesi/{id_sesi}/scan", response_model=ScanHasilResponse)
+def scan_sampah(
+    id_sesi: int, data: ScanRequest,
+    authorization: str = Header(None), db: Session = Depends(get_db),
+):
+    """
+    Tombol SCAN: terima 1 foto dari kamera browser, deteksi dengan YOLO, simpan hasil teratas
+    (confidence tertinggi) ke item sesi. Satu scan = satu item.
+    """
+    get_current_admin(authorization)
+    sesi = _ambil_sesi(db, id_sesi)
+    if sesi.status != StatusSesi.aktif:
+        raise HTTPException(status_code=409, detail=f"Sesi ini sudah berstatus '{sesi.status.value}'")
+
+    # 1) Inferensi DULU, di luar kunci mesin, supaya /iot-ml/berat dari timbangan tidak ikut menunggu.
+    try:
+        deteksi, jpeg = deteksi_gambar(data.foto_base64)
+    except DetektorError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e))
+
+    if not deteksi:
+        return ScanHasilResponse(
+            terdeteksi=False,
+            pesan="Tidak ada sampah terdeteksi. Dekatkan sampah ke kamera, atau pilih jenisnya manual.",
+            sesi=_detail_sesi(db, sesi),
+        )
+
+    labels = {d.label for d in deteksi}
+    nama_by_kode = {
+        j.kode_ml: j.nama_jenis
+        for j in db.query(JenisSampah).filter(JenisSampah.kode_ml.in_(labels)).all()
+    }
+    atas = deteksi[0]
+    foto_url = _save_base64_image(base64.b64encode(jpeg).decode())
+
+    # 2) Tulis hasil ke item sesi (di bawah kunci mesin)
+    sesi = _ambil_sesi_aktif_terkunci(db, id_sesi)
+    scan = _target_scan(db, sesi)
+    if scan:
+        scan.jenis_terdeteksi = atas.label
+        scan.confidence = Decimal(str(atas.confidence))
+        scan.foto_url = foto_url
+    else:
+        scan = ScanPending(
+            machine_id=sesi.machine_id, nik=sesi.nik, sesi_id=sesi.id,
+            jenis_terdeteksi=atas.label, confidence=Decimal(str(atas.confidence)), foto_url=foto_url,
+        )
+        db.add(scan)
+    sesi.terakhir_aktif = now_wib()
+    db.commit()
+
+    nama_atas = nama_by_kode.get(atas.label)
+    if nama_atas:
+        pesan = f"Terdeteksi {nama_atas} ({atas.confidence:g}%)."
+    else:
+        pesan = f"Terdeteksi '{atas.label}' ({atas.confidence:g}%), tapi belum dipetakan ke jenis sampah. Pilih jenisnya manual."
+    lain = sorted({d.label for d in deteksi if d.label != atas.label})
+    if lain:
+        pesan += f" Terdeteksi juga: {', '.join(lain)}. Ubah lewat dropdown bila yang diambil salah."
+
+    return ScanHasilResponse(
+        terdeteksi=True, pesan=pesan, foto_url=foto_url,
+        deteksi=[
+            DeteksiItem(label=d.label, confidence=d.confidence, nama_jenis=nama_by_kode.get(d.label))
+            for d in deteksi
+        ],
+        sesi=_detail_sesi(db, sesi),
+    )
+
+
+@router.get("/model", response_model=ModelInfoResponse)
+def info_model(authorization: str = Header(None), db: Session = Depends(get_db)):
+    """Kelas model YOLO yang sedang dimuat + sudah dipetakan ke jenis sampah mana (lewat kode_ml). Berguna saat mengisi Database Sampah."""
+    get_current_admin(authorization)
+    try:
+        kelas = nama_kelas()
+    except DetektorError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e))
+    peta = {
+        j.kode_ml: j.nama_jenis
+        for j in db.query(JenisSampah).filter(JenisSampah.kode_ml.isnot(None)).all()
+    }
+    return ModelInfoResponse(
+        model_path=MODEL_PATH, jumlah_kelas=len(kelas),
+        kelas=[KelasModel(id=i, nama=n, dipetakan_ke=peta.get(n)) for i, n in sorted(kelas.items())],
+    )
 
 
 @router.post("/sesi/{id_sesi}/selesai", response_model=SesiResponse)

@@ -7,13 +7,17 @@ PERUBAHAN dari versi sebelumnya:
 - Tambah POST /iot-ml/heartbeat (alat IoT lapor "saya hidup") -> dasar status "Tersambung".
 - ScanPending.id_jenis_override: admin bisa memilih jenis sampah manual (menimpa / melengkapi label ML).
 - Logika menutup sesi dipindah ke fungsi bersama tutup_sesi() supaya dipakai admin_iot.py.
+- ML sekarang berjalan di backend (YOLO): label datang dari tombol SCAN admin (admin_iot.py, POST /sesi/{id}/scan),
+  bukan dari tim ML. Karena yang menekan SCAN manusia, item yang baru terisi satu sisi (berat saja / label saja)
+  TIDAK lagi kadaluarsa di tengah sesi; admin bisa membuangnya, dan sisanya dibersihkan saat sesi ditutup.
+  /iot-ml/deteksi dibiarkan hanya untuk uji coba; hapus bila sudah tidak dipakai.
 """
 import os
 from datetime import timedelta
 from typing import Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import and_, or_, text
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -30,7 +34,6 @@ from app.api.transaksi import buat_transaksi_iot, _save_base64_image
 
 router = APIRouter(prefix="/iot-ml", tags=["IoT & ML (terpisah)"])
 
-WINDOW_DETIK = 15        # batas menjodohkan berat (IoT) dengan label (ML) dari mesin yang sama
 SESI_IDLE_MENIT = 30     # sesi tanpa aktivitas selama ini dianggap basi -> dibatalkan (dulu 10, admin yang menutup sekarang)
 ONLINE_DETIK = 30        # alat dianggap "Tersambung" kalau heartbeat terakhir <= ini (alat kirim tiap ~10 detik)
 CONFIDENCE_RENDAH = 80   # sama dengan CONFIDENCE_THRESHOLD di transaksi.py
@@ -93,24 +96,9 @@ def sesi_aktif(db: Session, machine_id: str) -> Optional[SesiSetoran]:
     return sesi
 
 
-def _expire_setengah(db: Session, machine_id: str):
-    """Item yang baru satu sisi dan lewat jendela waktu -> kadaluarsa. Item lengkap TIDAK ikut."""
-    batas = now_wib() - timedelta(seconds=WINDOW_DETIK)
-    db.query(ScanPending).filter(
-        ScanPending.machine_id == machine_id,
-        ScanPending.status == StatusScan.menunggu,
-        ScanPending.created_at < batas,
-        or_(
-            ScanPending.berat.is_(None),
-            and_(ScanPending.jenis_terdeteksi.is_(None), ScanPending.id_jenis_override.is_(None)),
-        ),
-    ).update({"status": StatusScan.kadaluarsa}, synchronize_session=False)
-
-
 def _wajib_sesi(db: Session, machine_id: str) -> SesiSetoran:
-    """Kunci mesin, bersihkan item basi, lalu pastikan ada sesi aktif. Kalau tidak ada -> 409."""
+    """Kunci mesin lalu pastikan ada sesi aktif. Kalau tidak ada -> 409."""
     kunci_mesin(db, machine_id)
-    _expire_setengah(db, machine_id)
     sesi = sesi_aktif(db, machine_id)
     if not sesi:
         db.commit()  # simpan efek samping (sesi basi dibatalkan / item kadaluarsa) sebelum menolak

@@ -81,3 +81,34 @@ class SesiDetailResponse(BaseModel):
     jumlah_item_siap: int = 0                # item yang akan masuk transaksi kalau disimpan sekarang
     total_berat: Decimal = Decimal(0)
     total_nilai: Decimal = Decimal(0)
+
+
+# ========== SCAN KAMERA (YOLO di backend) ==========
+class ScanRequest(BaseModel):
+    foto_base64: str = Field(..., min_length=100, description="JPEG hasil capture kamera browser (data URI atau base64 polos)")
+
+
+class DeteksiItem(BaseModel):
+    label: str                              # nama kelas YOLO
+    confidence: float                       # 0-100
+    nama_jenis: Optional[str] = None        # hasil pemetaan ke JenisSampah.kode_ml; None = belum dipetakan
+
+
+class ScanHasilResponse(BaseModel):
+    terdeteksi: bool
+    pesan: str
+    foto_url: Optional[str] = None          # foto dengan kotak deteksi
+    deteksi: List[DeteksiItem] = []
+    sesi: SesiDetailResponse
+
+
+class KelasModel(BaseModel):
+    id: int
+    nama: str
+    dipetakan_ke: Optional[str] = None      # nama jenis sampah yang kode_ml-nya sama dengan nama kelas
+
+
+class ModelInfoResponse(BaseModel):
+    model_path: str
+    jumlah_kelas: int
+    kelas: List[KelasModel]
