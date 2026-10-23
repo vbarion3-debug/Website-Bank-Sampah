@@ -4,6 +4,7 @@ venv/
 # Secret
 .env
 private_uploads/
+static/
 
 # Python Cache
 __pycache__/

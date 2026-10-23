@@ -83,5 +83,5 @@ class StokJenisResponse(BaseModel):
     nama_jenis: str
     kategori: Optional[str] = None
     masuk: Decimal   # total berat dari setoran nasabah
-    keluar: Decimal  # total berat yang sudah dijual ke yayasan
+    keluar: Decimal  # total berat yang sudah dijual ke pengepul
     stok: Decimal    # masuk - keluar (bisa negatif kalau data awal belum lengkap)

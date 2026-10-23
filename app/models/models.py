@@ -203,7 +203,7 @@ class Pengumuman(Base):
 
 
 class MitraPengepul(Base):
-    """Tabel Mitra Pengepul/Yayasan - tempat Bank Sampah menjual stok sampah yang terkumpul"""
+    """Tabel Mitra Pengepul - tempat Bank Sampah menjual stok sampah yang terkumpul"""
     __tablename__ = "mitra_pengepul"
 
     id_mitra = Column(Integer, primary_key=True, autoincrement=True)

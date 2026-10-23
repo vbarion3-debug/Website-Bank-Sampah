@@ -202,12 +202,12 @@ def laporan_pemasukan(
     db: Session = Depends(get_db),
     tanggal_mulai: Optional[date] = Query(None, description="YYYY-MM-DD (inklusif)"),
     tanggal_akhir: Optional[date] = Query(None, description="YYYY-MM-DD (inklusif)"),
-    id_mitra: Optional[int] = Query(None, gt=0, description="Filter 1 yayasan"),
+    id_mitra: Optional[int] = Query(None, gt=0, description="Filter 1 pengepul"),
     limit: int = Query(20, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ):
     """
-    Laporan pemasukan dari penjualan sampah ke yayasan.
+    Laporan pemasukan dari penjualan sampah ke pengepul.
     Ringkasan & rincian dihitung di database (bukan di browser), jadi tetap akurat
     walau datanya banyak. Hanya 'data' yang dipaginasi; ringkasan selalu mencakup semua hasil filter.
     """
@@ -220,7 +220,7 @@ def laporan_pemasukan(
         func.coalesce(func.sum(T.total_nilai), 0),
     ).filter(*filters).one()
 
-    # Pemasukan bulan berjalan (WIB). Hanya ikut filter yayasan, tidak ikut filter tanggal.
+    # Pemasukan bulan berjalan (WIB). Hanya ikut filter pengepul, tidak ikut filter tanggal.
     awal_bulan = now_wib().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     filter_bulan = [T.tanggal_transaksi >= awal_bulan]
     if id_mitra:
@@ -314,7 +314,7 @@ def export_laporan_pemasukan(
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow([
-        "Tanggal", "ID Transaksi", "Yayasan", "Jenis Sampah", "Berat (kg)",
+        "Tanggal", "ID Transaksi", "Pengepul", "Jenis Sampah", "Berat (kg)",
         "Harga per kg", "Subtotal", "Dicatat oleh", "Keterangan",
     ])
     for t in rows:
@@ -334,7 +334,7 @@ def export_laporan_pemasukan(
     return Response(
         content="\ufeff" + buf.getvalue(),  # BOM supaya Excel membaca UTF-8
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": 'attachment; filename="laporan-pemasukan-yayasan.csv"'},
+        headers={"Content-Disposition": 'attachment; filename="laporan-pemasukan-pengepul.csv"'},
     )
 
 
@@ -346,7 +346,7 @@ def stok_sampah(
     db: Session = Depends(get_db),
 ):
     """
-    Stok per jenis = total berat setoran nasabah - total berat yang sudah dijual ke yayasan.
+    Stok per jenis = total berat setoran nasabah - total berat yang sudah dijual ke pengepul.
     Hanya menampilkan angka; BELUM dipakai untuk menolak penjualan (lihat catatan di create).
     Stok negatif berarti ada penjualan yang melebihi setoran tercatat (mis. stok awal belum diinput).
     """
