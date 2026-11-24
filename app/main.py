@@ -44,8 +44,12 @@ async def global_exception_handler(request: Request, exc: Exception):
 # ========== CORSMiddleware ==========
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://admin.banksampahkita.web.id", 
-                   "https://banksampahkita.web.id",],
+    allow_origins=[
+        "https://admin.banksampahkita.web.id",
+        "https://banksampahkita.web.id",
+        "http://localhost:5173",   # frontend nasabah saat development
+        "http://localhost:5174",   # frontend admin saat development
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
